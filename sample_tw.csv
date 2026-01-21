@@ -1,0 +1,9 @@
+Date,Ticker,Stock Name,Type,Shares,Price,Fee,Cash Flow
+2021-06-01,2603,Evergreen Marine,Buy,1000,80,20,
+2021-07-01,2603,Evergreen Marine,Sell,1000,200,60,
+2022-03-15,2330,TSMC,Buy,1000,550,100,
+2022-09-01,2330,TSMC,Dividend,0,2000,0,
+2023-01-15,0050,Yuanta 50,Buy,2000,110,50,
+2023-06-01,0056,High Div Custom,Buy,5000,30,50,
+2023-12-01,0056,High Div Custom,Sell,5000,35,50,
+2024-03-01,2330,TSMC,Dividend,0,2000,0,

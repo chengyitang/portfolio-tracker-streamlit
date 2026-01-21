@@ -1,0 +1,10 @@
+Date,Ticker,Stock Name,Type,Shares,Price,Fee,Cash Flow
+2021-03-01,TSLA,Tesla,Buy,10,600,0,
+2021-08-01,TSLA,Tesla,Sell,10,750,0,
+2022-01-15,AMZN,Amazon,Buy,20,170,0,
+2022-11-20,AMZN,Amazon,Sell,20,90,0,
+2023-01-10,MSFT,Microsoft,Buy,15,230,0,
+2023-12-01,MSFT,Microsoft,Sell,15,370,0,
+2024-01-20,AAPL,Apple,Buy,10,180,5,
+2024-06-01,NVDA,NVIDIA,Buy,10,800,5,
+2024-07-01,NVDA,NVIDIA,Sell,10,900,5,
