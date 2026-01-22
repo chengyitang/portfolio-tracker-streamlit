@@ -531,18 +531,34 @@ if 'ledger' in st.session_state:
     with chart_col1:
         st.caption("Active Asset Allocation")
         if not active_portfolio.empty:
+            # Prepare Data for Chart
+            total_val = active_portfolio['Market Value'].sum()
+            active_portfolio['Weight'] = active_portfolio['Market Value'] / total_val
+            active_portfolio['Label'] = active_portfolio.apply(lambda x: f"{x['Symbol']} ({x['Weight']:.1%})", axis=1)
+
             import altair as alt
+            
             base = alt.Chart(active_portfolio).encode(
                 theta=alt.Theta("Market Value", stack=True),
                 color=alt.Color("Symbol"),
-                tooltip=["Symbol", "Market Value", "Total %", "Currency"]
+                order=alt.Order("Market Value", sort="descending"), # Ensure consistent sorting
+                tooltip=["Symbol", "Market Value", alt.Tooltip("Weight", format=".1%"), "Total %", "Currency"]
             )
+            
             pie = base.mark_arc(outerRadius=120)
+            
             text = base.mark_text(radius=140).encode(
-                text="Symbol",
-                order=alt.Order("Market Value", sort="descending")
+                text="Label",
+                order=alt.Order("Market Value", sort="descending"),
+                color=alt.value("white") # Better visibility on dark theme, or remove for auto
             )
-            st.altair_chart(pie + text, width='stretch')
+            
+            # Combine
+            chart = (pie + text).properties(
+                title=""
+            )
+            
+            st.altair_chart(chart, use_container_width=True)
         else:
             st.info("No active assets to display.")
             
