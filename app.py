@@ -372,58 +372,36 @@ st.title("💰 Personal Portfolio Tracker")
 with st.expander("ℹ️ How it works & Privacy", expanded=False):
     st.markdown("""
     ### 🔒 Privacy & Data Security
-    *   **Local Processing**: Your ledger files are processed entirely within this app instance. We do not upload your financial data to any external cloud database.
-    *   **No Tracking**: We do not track your trades or portfolio performance.
-    *   **External Requests**: The app only connects to **Yahoo Finance** to fetch the latest market prices for your tickers.
+    *   **NO Data Persistence**: Your data exists **only in your browser's memory**. It is NOT saved to the server's disk.
+    *   **Instant Privacy**: Closing this tab destroys all data immediately.
+    *   **Local Processing**: Ledger aggregation happens locally. Only price requests go to Yahoo Finance.
 
     ### 📖 How to Use
-    1.  **Prepare your Data**: Download the **Sample Template** from the sidebar.
-    2.  **Maintain your Ledger**: Keep your own Excel or CSV file. Record every Buy, Sell, and Dividend.
-    3.  **Upload & Analyze**: Drag and drop your file into the sidebar. The app will calculate everything for you!
+    1.  **Download Templates**: Get the **US** or **TW** samples from the sidebar.
+    2.  **Maintain Locally**: Update the CSV with your own trades.
+    3.  **Upload to View**: Drag your file to the sidebar every time you open the app.
     """)
 
 import os
-import shutil
 
 # --- Configuration ---
-DATA_DIR = "data"
-os.makedirs(DATA_DIR, exist_ok=True)
+# No Disk Persistence for true privacy
 
 # ... (Previous imports code) ...
 
-# --- Persistence Logic ---
-def save_uploaded_files(uploaded_files):
-    saved_paths = []
-    for file in uploaded_files:
-        file_path = os.path.join(DATA_DIR, file.name)
-        with open(file_path, "wb") as f:
-            f.write(file.getbuffer())
-        saved_paths.append(file_path)
-    return saved_paths
-
-def load_saved_files():
+# --- Helper Logic ---
+def load_uploaded_files(uploaded_files):
     dataframes = []
-    if os.path.exists(DATA_DIR):
-        files = [f for f in os.listdir(DATA_DIR) if f.endswith(('.csv', '.xlsx'))]
-        for file in files:
-            file_path = os.path.join(DATA_DIR, file)
-            try:
-                if file.endswith('.csv'):
-                    df = pd.read_csv(file_path, dtype={'Ticker': str})
-                else:
-                    df = pd.read_excel(file_path, dtype={'Ticker': str})
-                dataframes.append(df)
-            except Exception as e:
-                st.error(f"Error loading {file}: {e}")
+    for file in uploaded_files:
+        try:
+            if file.name.endswith('.csv'):
+                df = pd.read_csv(file, dtype={'Ticker': str})
+            else:
+                df = pd.read_excel(file, dtype={'Ticker': str})
+            dataframes.append(df)
+        except Exception as e:
+            st.error(f"Error loading {file.name}: {e}")
     return dataframes
-
-def clear_saved_data():
-    if os.path.exists(DATA_DIR):
-        for f in os.listdir(DATA_DIR):
-            os.remove(os.path.join(DATA_DIR, f))
-    st.cache_data.clear()
-    if 'ledger' in st.session_state:
-        del st.session_state['ledger']
 
 # --- UI Layout ---
 
@@ -453,25 +431,20 @@ with open("sample_tw.csv", "rb") as file:
         file_name="ledger_template_tw.csv",
         mime="text/csv"
     )
-uploaded_files = st.sidebar.file_uploader("Add/Update Ledger(s)", type=["csv", "xlsx"], accept_multiple_files=True)
-st.sidebar.text("Try to refresh page after uploading.")
+    
+uploaded_files = st.sidebar.file_uploader("Upload Ledger(s) (Session Only)", type=["csv", "xlsx"], accept_multiple_files=True)
 
+# Main Logic: Process Uploads
 if uploaded_files:
-    save_uploaded_files(uploaded_files)
-    st.sidebar.success("Files saved!")
-    st.rerun() # Reload to pick up new files
-
-if st.sidebar.button("Clear Saved Data"):
-    clear_saved_data()
-    st.rerun()
-
-# Auto-Load Logic
-if 'ledger' not in st.session_state:
-    dfs = load_saved_files()
+    dfs = load_uploaded_files(uploaded_files)
     if dfs:
         combined_ledger = pd.concat(dfs, ignore_index=True)
         st.session_state['ledger'] = process_ledger(combined_ledger)
-        st.sidebar.info(f"Loaded {len(dfs)} saved file(s).")
+        st.sidebar.success(f"Processed {len(uploaded_files)} file(s).")
+else:
+    # Reset ledger if files are cleared from uploader
+    if 'ledger' in st.session_state:
+        del st.session_state['ledger']
 
 # Main Display
 if 'ledger' in st.session_state:
