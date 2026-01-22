@@ -49,7 +49,9 @@ def calculate_cash_flow(row):
     elif row['Type'] == 'Sell':
         return (shares * price - fee)
     elif row['Type'] == 'Dividend':
-        return price 
+        return price
+    elif row['Type'] == 'Split':
+        return 0.0
     return 0.0
 
 def process_ledger(df: pd.DataFrame) -> pd.DataFrame:
@@ -162,7 +164,7 @@ def aggregate_portfolio(ledger: pd.DataFrame, target_currency: str, fx_rate: flo
     unique_symbols = ledger['Symbol'].unique().tolist()
     
     # Identify Active Symbols for Fetching (Shares > 0)
-    buys = ledger[ledger['Type'] == 'Buy'].groupby('Symbol')['Shares'].sum()
+    buys = ledger[ledger['Type'].isin(['Buy', 'Split'])].groupby('Symbol')['Shares'].sum()
     sells = ledger[ledger['Type'] == 'Sell'].groupby('Symbol')['Shares'].sum()
     net_shares = buys.sub(sells, fill_value=0)
     active_symbols = net_shares[net_shares > 0].index.tolist()
@@ -184,7 +186,7 @@ def aggregate_portfolio(ledger: pd.DataFrame, target_currency: str, fx_rate: flo
         native_currency = detect_currency(symbol)
         
         # Share aggregation
-        total_buy_shares = group[group['Type'] == 'Buy']['Shares'].sum()
+        total_buy_shares = group[group['Type'].isin(['Buy', 'Split'])]['Shares'].sum()
         total_sell_shares = group[group['Type'] == 'Sell']['Shares'].sum()
         current_shares = total_buy_shares - total_sell_shares
         
@@ -206,7 +208,7 @@ def aggregate_portfolio(ledger: pd.DataFrame, target_currency: str, fx_rate: flo
 
         # --- Active Position Logic ---
         if current_shares > 0:
-            total_buy_shares_all = buy_txs['Shares'].sum()
+            total_buy_shares_all = group[group['Type'].isin(['Buy', 'Split'])]['Shares'].sum()
             avg_cost_native = total_buy_cost_native / total_buy_shares_all if total_buy_shares_all else 0.0
             
             curr_price_native = current_prices.get(symbol, 0.0)
@@ -276,7 +278,8 @@ def calculate_realized_trend(ledger: pd.DataFrame, target_currency: str, fx_rate
         
     # 1. Identify Closed Symbols
     # Calculate Net Shares: Sum(Buy Shares) - Sum(Sell Shares)
-    buys = ledger[ledger['Type'] == 'Buy'].groupby('Symbol')['Shares'].sum()
+    # Calculate Net Shares
+    buys = ledger[ledger['Type'].isin(['Buy', 'Split'])].groupby('Symbol')['Shares'].sum()
     sells = ledger[ledger['Type'] == 'Sell'].groupby('Symbol')['Shares'].sum()
     net_shares = buys.sub(sells, fill_value=0)
     
@@ -321,6 +324,11 @@ def calculate_realized_trend(ledger: pd.DataFrame, target_currency: str, fx_rate
             cost = abs(row['Cash Flow']) # Buy is negative CF
             state['shares'] += shares
             state['total_cost'] += cost
+            
+        elif type_ == 'Split':
+            # Add shares, cost stays same (avg cost decreases)
+            shares = row['Shares']
+            state['shares'] += shares
             
         elif type_ == 'Sell':
             shares = row['Shares'] # Positive int from input? 
