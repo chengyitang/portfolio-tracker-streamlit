@@ -72,10 +72,12 @@ def process_ledger(df: pd.DataFrame) -> pd.DataFrame:
     
     return df
 
-@st.cache_data(ttl=3600)
-def fetch_current_prices_and_fx(symbols: list):
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_current_prices_and_fx(symbols: list, _log_func=None):
     """
     Fetch current prices and USDTWD exchange rate.
+    _log_func: Optional callback for logging (underscore to denote it's not part of cache key if we wanted, 
+               but st.cache_data hashes arguments. We can exclude it or just let it be None default).
     """
     if not symbols:
         return {}, 1.0
@@ -84,37 +86,63 @@ def fetch_current_prices_and_fx(symbols: list):
     fetch_list = symbols + ['USDTWD=X']
     tickers_str = " ".join(fetch_list)
     
+    if _log_func:
+        _log_func(f"Fetching data from Yahoo Finance: {tickers_str}")
+    
     try:
-        data = yf.download(tickers_str, period="1d", group_by='ticker', threads=True)
+        # Use 5d period to handle weekends/holidays better
+        data = yf.download(tickers_str, period="5d", group_by='ticker', threads=True)
         prices = {}
         fx_rate = 30.0 # Default fallback
         
-        def get_price(ticker_data):
-            try:
-                if isinstance(ticker_data, pd.DataFrame):
-                     if 'Close' in ticker_data.columns:
-                         val = ticker_data['Close'].iloc[-1]
-                         return float(val) if not pd.isna(val) else 0.0
-                elif isinstance(ticker_data, pd.Series):
-                    val = ticker_data.iloc[-1]
-                    return float(val) if not pd.isna(val) else 0.0
+        # Helper to get last valid price from a series
+        def get_last_valid(series):
+            if isinstance(series, pd.DataFrame):
+                series = series.iloc[:, 0]
+            if series.empty:
                 return 0.0
-            except:
+            valid = series.dropna()
+            if valid.empty:
                 return 0.0
+            return float(valid.iloc[-1])
 
         if len(fetch_list) == 1:
-            pass 
+            # Single ticker download structure is different (no top level ticker key)
+            # data columns are 'Adj Close', 'Close', etc.
+            # But fetch_list always has at least USDTWD=X. 
+            # If symbols is empty, fetch_list=['USDTWD=X'], len=1.
+            # So this block handles the case where ONLY FX is fetched (no stocks).
+            try:
+                rate_series = data['Close']
+                fetched_rate = get_last_valid(rate_series)
+                fx_rate = fetched_rate if fetched_rate > 0 else 30.0
+            except Exception:
+                pass
         else:
             for sym in symbols:
                 try:
-                    price = data[sym]['Close'].iloc[-1]
-                    prices[sym] = float(price) if not pd.isna(price) else 0.0
-                except (KeyError, IndexError):
+                    val = 0.0
+                    if sym in data.columns or (sym in data.columns.levels[0] if isinstance(data.columns, pd.MultiIndex) else False):
+                         # Handle MultiIndex
+                         price_series = data[sym]['Close']
+                         val = get_last_valid(price_series)
+                    
+                    prices[sym] = val
+                    
+                    if val == 0.0 and _log_func:
+                        _log_func(f"⚠️ Warning: No recent price found for {sym} (Value is 0/NaN)")
+                        
+                except Exception as e:
                     prices[sym] = 0.0
+                    if _log_func:
+                         _log_func(f"❌ Error: Could not extract data for {sym}. Details: {e}")
             
             try:
-                rate = data['USDTWD=X']['Close'].iloc[-1]
-                fx_rate = float(rate) if not pd.isna(rate) else 30.0
+                # FX
+                if 'USDTWD=X' in data.columns or ('USDTWD=X' in data.columns.levels[0] if isinstance(data.columns, pd.MultiIndex) else False):
+                    rate_series = data['USDTWD=X']['Close']
+                    rate = get_last_valid(rate_series)
+                    fx_rate = rate if rate > 0 else 30.0
             except (KeyError, IndexError):
                 pass
                 
@@ -123,7 +151,7 @@ def fetch_current_prices_and_fx(symbols: list):
         st.error(f"Error fetching data: {e}")
         return {}, 30.0
 
-def aggregate_portfolio(ledger: pd.DataFrame, target_currency: str, fx_rate: float):
+def aggregate_portfolio(ledger: pd.DataFrame, target_currency: str, fx_rate: float, log_func=None):
     """
     Aggregate ledger to portfolio view with currency conversion.
     Returns: (active_df, closed_df, applied_fx_rate)
@@ -132,7 +160,17 @@ def aggregate_portfolio(ledger: pd.DataFrame, target_currency: str, fx_rate: flo
         return pd.DataFrame(), pd.DataFrame(), 30.0
 
     unique_symbols = ledger['Symbol'].unique().tolist()
-    current_prices, fetched_fx = fetch_current_prices_and_fx(unique_symbols)
+    
+    # Identify Active Symbols for Fetching (Shares > 0)
+    buys = ledger[ledger['Type'] == 'Buy'].groupby('Symbol')['Shares'].sum()
+    sells = ledger[ledger['Type'] == 'Sell'].groupby('Symbol')['Shares'].sum()
+    net_shares = buys.sub(sells, fill_value=0)
+    active_symbols = net_shares[net_shares > 0].index.tolist()
+    
+    if log_func:
+        log_func(f"Found {len(active_symbols)} active symbols (out of {len(unique_symbols)} total). Preparing to fetch...")
+        
+    current_prices, fetched_fx = fetch_current_prices_and_fx(active_symbols, _log_func=log_func)
     
     real_fx = fetched_fx if fetched_fx > 0 else 30.0
     
@@ -152,7 +190,10 @@ def aggregate_portfolio(ledger: pd.DataFrame, target_currency: str, fx_rate: flo
         
         # Common Calculations (Native)
         buy_txs = group[group['Type'] == 'Buy']
+        sell_txs = group[group['Type'] == 'Sell']
+        
         total_buy_cost_native = abs(buy_txs['Cash Flow'].sum())
+        total_sell_proceeds_native = sell_txs['Cash Flow'].sum() # Sells are positive CF
         sum_cash_flows_native = group['Cash Flow'].sum()
         dividends_native = group[group['Type'] == 'Dividend']['Cash Flow'].sum()
         
@@ -170,10 +211,22 @@ def aggregate_portfolio(ledger: pd.DataFrame, target_currency: str, fx_rate: flo
             
             curr_price_native = current_prices.get(symbol, 0.0)
             market_value_native = current_shares * curr_price_native
+            
+            # Capital Gain (Unrealized)
             capital_gain_native = (curr_price_native - avg_cost_native) * current_shares
+            
+            # Total Return (Unrealized + Realized + Divs) - This remains "Total P/L" for the position lifetime
             total_return_native = market_value_native + sum_cash_flows_native
-            adj_avg_cost_native = (total_buy_cost_native - dividends_native) / current_shares if current_shares else 0.0
-            total_pct = total_return_native / total_buy_cost_native if total_buy_cost_native else 0.0
+            
+            # Adjusted Avg Cost (Break Even Price)
+            # (Total Spent - Total Returned) / Remaining Shares
+            # Total Returned = Sell Proceeds + Dividends
+            net_invested_native = total_buy_cost_native - total_sell_proceeds_native - dividends_native
+            adj_avg_cost_native = net_invested_native / current_shares if current_shares else 0.0
+            
+            # Total % (Unrealized ROI)
+            # (Current Price - Avg Cost) / Avg Cost
+            total_pct = (curr_price_native - avg_cost_native) / avg_cost_native if avg_cost_native else 0.0
             
             # Convert
             active_rows.append({
@@ -401,8 +454,12 @@ if 'ledger' not in st.session_state:
 if 'ledger' in st.session_state:
     ledger = st.session_state['ledger']
     
-    # Calc
-    active_portfolio, closed_portfolio, fx_used = aggregate_portfolio(ledger, target_currency, 30.0)
+    # Calc with Status
+    with st.status("Updating Portfolio Data...", expanded=True) as status:
+        st.write("Aggregating portfolio...")
+        active_portfolio, closed_portfolio, fx_used = aggregate_portfolio(ledger, target_currency, 30.0, log_func=st.write)
+        st.write("Calculations complete.")
+        status.update(label="Portfolio Data Ready", state="complete", expanded=False)
     
     # Currency Symbol
     c_sym = "NT$" if target_currency == 'TWD' else "$"
@@ -432,13 +489,13 @@ if 'ledger' in st.session_state:
     
     if not active_portfolio.empty:
         column_config = {
-            'Avg. Cost': st.column_config.NumberColumn(format=f"{c_sym}%.2f"),
-            'Current Price': st.column_config.NumberColumn(format=f"{c_sym}%.2f"),
-            'Market Value': st.column_config.NumberColumn(format=f"{c_sym}%.2f"),
-            'Total Dividends': st.column_config.NumberColumn(format=f"{c_sym}%.2f"),
-            'Capital Gain': st.column_config.NumberColumn(format=f"{c_sym}%.2f"),
-            'Total Return': st.column_config.NumberColumn(format=f"{c_sym}%.2f"),
-            'Adjusted Avg. Cost': st.column_config.NumberColumn(format=f"{c_sym}%.2f"),
+            'Avg. Cost': st.column_config.NumberColumn(format="%.2f"),
+            'Current Price': st.column_config.NumberColumn(format="%.2f"),
+            'Market Value': st.column_config.NumberColumn(format="%.2f"),
+            'Total Dividends': st.column_config.NumberColumn(format="%.2f"),
+            'Capital Gain': st.column_config.NumberColumn(format="%.2f"),
+            'Total Return': st.column_config.NumberColumn(format="%.2f"),
+            'Adjusted Avg. Cost': st.column_config.NumberColumn(format="%.2f"),
             'Total %': st.column_config.NumberColumn(format="%.2f%%"),
         }
         
@@ -491,10 +548,10 @@ if 'ledger' in st.session_state:
         st.subheader(f"Realized / Closed Portfolio ({target_currency})")
         
         closed_config = {
-            'Realized P/L': st.column_config.NumberColumn(format=f"{c_sym}%.2f"),
-            'Total Return': st.column_config.NumberColumn(format=f"{c_sym}%.2f"),
-            'Total Dividends': st.column_config.NumberColumn(format=f"{c_sym}%.2f"),
-            'Total Invested': st.column_config.NumberColumn(format=f"{c_sym}%.2f"),
+            'Realized P/L': st.column_config.NumberColumn(format="%.2f"),
+            'Total Return': st.column_config.NumberColumn(format="%.2f"),
+            'Total Dividends': st.column_config.NumberColumn(format="%.2f"),
+            'Total Invested': st.column_config.NumberColumn(format="%.2f"),
             'Total %': st.column_config.NumberColumn(format="%.2f%%"),
         }
         
