@@ -438,11 +438,19 @@ st.sidebar.divider()
 st.sidebar.header("Data Management")
 
 # Download Template
+col_dl1, col_dl2 = st.sidebar.columns(2)
 with open("sample_us.csv", "rb") as file:
-    st.sidebar.download_button(
-        label="Download Sample Template (CSV)",
+    col_dl1.download_button(
+        label="🇺🇸 US Sample",
         data=file,
-        file_name="ledger_template.csv",
+        file_name="ledger_template_us.csv",
+        mime="text/csv"
+    )
+with open("sample_tw.csv", "rb") as file:
+    col_dl2.download_button(
+        label="🇹🇼 TW Sample",
+        data=file,
+        file_name="ledger_template_tw.csv",
         mime="text/csv"
     )
 uploaded_files = st.sidebar.file_uploader("Add/Update Ledger(s)", type=["csv", "xlsx"], accept_multiple_files=True)
