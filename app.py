@@ -369,6 +369,19 @@ def calculate_realized_trend(ledger: pd.DataFrame, target_currency: str, fx_rate
 
 st.title("💰 Personal Portfolio Tracker")
 
+with st.expander("ℹ️ How it works & Privacy", expanded=False):
+    st.markdown("""
+    ### 🔒 Privacy & Data Security
+    *   **Local Processing**: Your ledger files are processed entirely within this app instance. We do not upload your financial data to any external cloud database.
+    *   **No Tracking**: We do not track your trades or portfolio performance.
+    *   **External Requests**: The app only connects to **Yahoo Finance** to fetch the latest market prices for your tickers.
+
+    ### 📖 How to Use
+    1.  **Prepare your Data**: Download the **Sample Template** from the sidebar.
+    2.  **Maintain your Ledger**: Keep your own Excel or CSV file. Record every Buy, Sell, and Dividend.
+    3.  **Upload & Analyze**: Drag and drop your file into the sidebar. The app will calculate everything for you!
+    """)
+
 import os
 import shutil
 
@@ -418,7 +431,9 @@ col_head1, col_head2 = st.columns([3, 1])
 # Sidebar
 st.sidebar.header("Settings")
 target_currency = st.sidebar.radio("Display Currency", ["TWD", "USD"], index=0)
+hide_values = st.sidebar.toggle("👁️ Hide Sensitive Data", value=False)
 
+st.sidebar.divider()
 
 st.sidebar.header("Data Management")
 
@@ -430,10 +445,6 @@ with open("sample_us.csv", "rb") as file:
         file_name="ledger_template.csv",
         mime="text/csv"
     )
-
-st.sidebar.divider()
-hide_values = st.sidebar.toggle("👁️ Hide Sensitive Data", value=False)
-
 uploaded_files = st.sidebar.file_uploader("Add/Update Ledger(s)", type=["csv", "xlsx"], accept_multiple_files=True)
 
 if uploaded_files:
