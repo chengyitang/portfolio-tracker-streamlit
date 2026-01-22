@@ -446,6 +446,7 @@ with open("sample_us.csv", "rb") as file:
         mime="text/csv"
     )
 uploaded_files = st.sidebar.file_uploader("Add/Update Ledger(s)", type=["csv", "xlsx"], accept_multiple_files=True)
+st.sidebar.text("Try to refresh page after uploading.")
 
 if uploaded_files:
     save_uploaded_files(uploaded_files)
