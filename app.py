@@ -258,8 +258,8 @@ def aggregate_portfolio(ledger: pd.DataFrame, target_currency: str, fx_rate: flo
                 'Symbol': symbol,
                 'Stock Name': stock_name,
                 'Currency': native_currency,
-                'Realized P/L': total_return_native * conversion_rate,
-                'Total Return': total_return_native * conversion_rate, # Same as Realized P/L for closed
+                'Realized P/L': (total_return_native - dividends_native) * conversion_rate, # Pure Capital Gain
+                'Total Return': total_return_native * conversion_rate, # Capital Gain + Dividends
                 'Total Dividends': dividends_native * conversion_rate,
                 'Total Invested': total_buy_cost_native * conversion_rate,
                 'Total %': total_pct
@@ -431,6 +431,9 @@ with open("sample_us.csv", "rb") as file:
         mime="text/csv"
     )
 
+st.sidebar.divider()
+hide_values = st.sidebar.toggle("👁️ Hide Sensitive Data", value=False)
+
 uploaded_files = st.sidebar.file_uploader("Add/Update Ledger(s)", type=["csv", "xlsx"], accept_multiple_files=True)
 
 if uploaded_files:
@@ -478,11 +481,20 @@ if 'ledger' in st.session_state:
     closed_div = closed_portfolio['Total Dividends'].sum() if not closed_portfolio.empty else 0.0
     total_div_all = active_div + closed_div
     
+    total_div_all = active_div + closed_div
+    
+    def format_kpi(val, prefix=""):
+        if hide_values:
+            return "****"
+        return f"{prefix}{val:,.2f}"
+    
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    kpi1.metric("Current Assets", f"{c_sym}{total_assets:,.2f}")
-    kpi2.metric("Total Profit/Loss", f"{c_sym}{total_pl_all:,.2f}", delta_color="normal")
-    kpi3.metric("Total Dividends", f"{c_sym}{total_div_all:,.2f}")
+    kpi1.metric("Current Assets", format_kpi(total_assets, c_sym))
+    kpi2.metric("Total Profit/Loss", format_kpi(total_pl_all, c_sym), delta_color="off" if hide_values else "normal")
+    kpi3.metric("Total Dividends", format_kpi(total_div_all, c_sym))
     kpi4.metric("FX Rate (USD/TWD)", f"{fx_used:,.2f}")
+    
+    # 2. Active Portfolio Table
     
     # 2. Active Portfolio Table
     st.subheader(f"Active Portfolio ({target_currency})")
@@ -560,8 +572,8 @@ if 'ledger' in st.session_state:
             return f'color: {color}'
 
         # Columns to show
-        cols_to_show = ['Symbol', 'Stock Name', 'Realized P/L', 'Total Dividends', 'Total Invested', 'Total %']
-        styled_closed = closed_portfolio[cols_to_show].style.map(highlight_pl, subset=['Realized P/L', 'Total %'])
+        cols_to_show = ['Symbol', 'Stock Name', 'Realized P/L', 'Total Dividends', 'Total Invested', 'Total Return', 'Total %']
+        styled_closed = closed_portfolio[cols_to_show].style.map(highlight_pl, subset=['Realized P/L', 'Total Return', 'Total %'])
         
         st.dataframe(styled_closed, column_config=closed_config, width='stretch')
         
