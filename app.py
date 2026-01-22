@@ -226,7 +226,7 @@ def aggregate_portfolio(ledger: pd.DataFrame, target_currency: str, fx_rate: flo
             
             # Total % (Unrealized ROI)
             # (Current Price - Avg Cost) / Avg Cost
-            total_pct = (curr_price_native - avg_cost_native) / avg_cost_native if avg_cost_native else 0.0
+            total_pct = ((curr_price_native - avg_cost_native) / avg_cost_native * 100) if avg_cost_native else 0.0
             
             # Convert
             active_rows.append({
@@ -252,7 +252,7 @@ def aggregate_portfolio(ledger: pd.DataFrame, target_currency: str, fx_rate: flo
             # Market Value is 0.
             # Total Return is just sum of cash flows.
             total_return_native = sum_cash_flows_native
-            total_pct = total_return_native / total_buy_cost_native if total_buy_cost_native else 0.0
+            total_pct = (total_return_native / total_buy_cost_native * 100) if total_buy_cost_native else 0.0
             
             closed_rows.append({
                 'Symbol': symbol,
