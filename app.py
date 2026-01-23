@@ -516,7 +516,35 @@ if 'ledger' in st.session_state:
             color = '#2ECC71' if val > 0 else '#E74C3C' if val < 0 else 'inherit'
             return f'color: {color}'
             
-        styled_active = active_portfolio.style.map(highlight_pl, subset=['Total Return', 'Capital Gain', 'Total %'])
+        # Calculate Summary Row for Active
+        sum_market_val = active_portfolio['Market Value'].sum()
+        sum_divs = active_portfolio['Total Dividends'].sum()
+        sum_cap_gain = active_portfolio['Capital Gain'].sum()
+        sum_total_return = active_portfolio['Total Return'].sum()
+        
+        # Total Invested (Approx Cost Basis) = Market Value - Capital Gain
+        total_cost_basis = sum_market_val - sum_cap_gain
+        sum_total_pct = (sum_total_return / total_cost_basis * 100) if total_cost_basis else 0.0
+
+        summary_row = pd.DataFrame([{
+            'Symbol': 'TOTAL',
+            'Stock Name': '', 
+            'Currency': '',
+            'Shares': None,
+            'Avg. Cost': None,
+            'Current Price': None,
+            'Market Value': sum_market_val,
+            'Total Dividends': sum_divs,
+            'Capital Gain': sum_cap_gain,
+            'Total Return': sum_total_return,
+            'Adjusted Avg. Cost': None,
+            'Total %': sum_total_pct
+        }])
+        
+        # Append to a copy for display
+        display_active = pd.concat([active_portfolio, summary_row], ignore_index=True)
+
+        styled_active = display_active.style.map(highlight_pl, subset=['Total Return', 'Capital Gain', 'Total %'])
         st.dataframe(styled_active, column_config=column_config, width='stretch')
         
 
@@ -588,9 +616,30 @@ if 'ledger' in st.session_state:
             color = '#2ECC71' if val > 0 else '#E74C3C' if val < 0 else 'inherit'
             return f'color: {color}'
 
+        # Calculate Summary Row for Closed
+        sum_realized_pl = closed_portfolio['Realized P/L'].sum()
+        sum_total_return = closed_portfolio['Total Return'].sum()
+        sum_divs = closed_portfolio['Total Dividends'].sum()
+        sum_invested = closed_portfolio['Total Invested'].sum()
+        sum_total_pct = (sum_total_return / sum_invested * 100) if sum_invested else 0.0
+        
+        summary_row = pd.DataFrame([{
+            'Symbol': 'TOTAL',
+            'Stock Name': '',
+            'Realized P/L': sum_realized_pl,
+            'Total Dividends': sum_divs,
+            'Total Invested': sum_invested,
+            'Total Return': sum_total_return,
+            'Total %': sum_total_pct
+        }])
+
         # Columns to show
         cols_to_show = ['Symbol', 'Stock Name', 'Realized P/L', 'Total Dividends', 'Total Invested', 'Total Return', 'Total %']
-        styled_closed = closed_portfolio[cols_to_show].style.map(highlight_pl, subset=['Realized P/L', 'Total Return', 'Total %'])
+        
+        # Append to a copy for display (filtering only necessary columns first ensures alignment)
+        display_closed = pd.concat([closed_portfolio[cols_to_show], summary_row], ignore_index=True)
+        
+        styled_closed = display_closed.style.map(highlight_pl, subset=['Realized P/L', 'Total Return', 'Total %'])
         
         st.dataframe(styled_closed, column_config=closed_config, width='stretch')
         
