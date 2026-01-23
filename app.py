@@ -249,8 +249,8 @@ def aggregate_portfolio(ledger: pd.DataFrame, target_currency: str, fx_rate: flo
         # --- Closed Position Logic ---
         # If shares are 0, check if we had activity.
         # Ideally, we should check if total_buy_shares > 0 to ensure it was a real position.
-        elif total_buy_shares > 0:
-            # Fully Realized
+        elif total_buy_shares > 0 or dividends_native > 0:
+            # Fully Realized OR Dividend-only position (e.g. data error or just tracking divs)
             # Market Value is 0.
             # Total Return is just sum of cash flows.
             total_return_native = sum_cash_flows_native
@@ -502,6 +502,7 @@ if 'ledger' in st.session_state:
     
     if not active_portfolio.empty:
         column_config = {
+            'Shares': st.column_config.NumberColumn(format="%.0f"),
             'Avg. Cost': st.column_config.NumberColumn(format="%.2f"),
             'Current Price': st.column_config.NumberColumn(format="%.2f"),
             'Market Value': st.column_config.NumberColumn(format="%.2f"),
